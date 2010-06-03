@@ -1,3 +1,7 @@
 *.log
 *.db
 database.yml
+.loadpath
+.project
+Manifest
+pkg/
