@@ -3,6 +3,10 @@ require "rubygems"
 require "rake"
 require "rake/testtask"
 
+require 'echoe'
+Echoe.new('cbaclig-ar-extensions')
+
+
 DIR      = Pathname.new(File.dirname(__FILE__))
 ADAPTERS = %w(mysql postgresql sqlite sqlite3 oracle)
 
