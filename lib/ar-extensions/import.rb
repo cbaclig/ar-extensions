@@ -214,6 +214,7 @@ class ActiveRecord::Base
       return_obj
     end
     
+    
     # TODO import_from_table needs to be implemented. 
     def import_from_table( options ) # :nodoc:
     end
@@ -255,26 +256,25 @@ class ActiveRecord::Base
     def import_without_validations_or_callbacks( column_names, array_of_attributes, options={} )
       escaped_column_names = quote_column_names( column_names )
       columns = []
-      array_of_attributes.first.each_with_index { |arr,i| columns << columns_hash[ column_names[i] ] }
+      array_of_attributes.first.each_with_index { |arr,i| columns << columns_hash[ column_names[i].to_s ] }
       
       if not supports_import?
         columns_sql = "(" + escaped_column_names.join( ',' ) + ")"
         insert_statements, values = [], []
         number_inserted = 0
         array_of_attributes.each do |arr|
-          my_values = []
-          arr.each_with_index do |val,j|
-            if !sequence_name.blank? && column_names[j] == primary_key && val.nil?
-               my_values << connection.next_value_for_sequence(sequence_name)
-            else
-               my_values << connection.quote( val, columns[j] )
-            end
-          end
+          my_values = replace_primary_key_values!(columns, arr)
+          
           insert_statements << "INSERT INTO #{quoted_table_name} #{columns_sql} VALUES(" + my_values.join( ',' ) + ")"
           connection.execute( insert_statements.last )
           number_inserted += 1
         end
       else
+        # Susbstitue primary_key values
+        array_of_attributes.map! do |arr|
+          replace_primary_key_values(columns, arr)
+        end
+        
         # generate the sql
         insert_sql = connection.multiple_value_sets_insert_sql( quoted_table_name, escaped_column_names, options )
         values_sql = connection.values_sql_for_column_names_and_attributes( columns, array_of_attributes )
@@ -296,7 +296,19 @@ class ActiveRecord::Base
 
     
     private
-
+    def replace_primary_key_values(columns, arr, options = {})
+      my_values = []
+      
+      arr.each_with_index do |val,j|
+        if !sequence_name.blank? && columns[j].name == primary_key && val.nil?
+           my_values << connection.next_value_for_sequence(sequence_name)
+        else
+           my_values << connection.quote( val, columns[j] )
+        end
+      end
+      
+      my_values
+    end
     
     def add_special_rails_stamps( column_names, array_of_attributes, options )
       AREXT_RAILS_COLUMNS[:create].each_pair do |key, blk|
@@ -323,11 +335,13 @@ class ActiveRecord::Base
             array_of_attributes.each { |arr| arr << value }
           end
           
-          if options[:on_duplicate_key_update]
-            options[:on_duplicate_key_update] << key.to_sym if options[:on_duplicate_key_update].is_a?(Array)
-            options[:on_duplicate_key_update][key.to_sym] = key.to_sym if options[:on_duplicate_key_update].is_a?(Hash)
-          else
-            options[:on_duplicate_key_update] = [ key.to_sym ]
+          if supports_on_duplicate_key_update?
+            if options[:on_duplicate_key_update]
+              options[:on_duplicate_key_update] << key.to_sym if options[:on_duplicate_key_update].is_a?(Array)
+              options[:on_duplicate_key_update][key.to_sym] = key.to_sym if options[:on_duplicate_key_update].is_a?(Hash)
+            else
+              options[:on_duplicate_key_update] = [ key.to_sym ]
+            end
           end
         end
       end
